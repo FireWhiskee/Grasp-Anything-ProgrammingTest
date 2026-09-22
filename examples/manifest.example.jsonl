@@ -1,0 +1,2 @@
+{"image":"images/scene_0001.jpg","prompt":"grasp the red mug by its body","negative_prompt":"grasp the blue bowl","grasps":[{"x":208.0,"y":173.0,"w":92.0,"h":34.0,"theta":0.18}]}
+{"image":"images/scene_0002.jpg","prompt":"pick up the metal spoon","negative_prompt":"pick up the plate","grasps":[[251.0,196.0,118.0,22.0,-0.61]]}
