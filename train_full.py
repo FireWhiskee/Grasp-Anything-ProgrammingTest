@@ -143,13 +143,13 @@ def main():
         optimizer, T_max=max(1, args.epochs - start_epoch + 1)
     )
     amp_enabled = args.device.startswith("cuda") and not args.no_amp
-    scaler = torch.cuda.amp.GradScaler(enabled=amp_enabled)
+    scaler = torch.cuda.amp.GradScaler(enabled=amp_enabled, init_scale=1024.0)
     parameter_count = sum(parameter.numel() for parameter in model.parameters())
     trainable_count = sum(parameter.numel() for parameter in trainable)
     print("parameters: {:,} total, {:,} trainable".format(parameter_count, trainable_count))
 
     history = list(checkpoint.get("history", []))
-    best_success = float(checkpoint.get("best_success_rate", -1.0))
+    best_score = float(checkpoint.get("best_score", float("-inf")))
     for epoch in range(start_epoch, args.epochs + 1):
         train_loss = train_one_epoch(
             model, train_loader, optimizer, scaler, args.device, args, epoch
@@ -160,12 +160,13 @@ def main():
         history.append(metrics)
         scheduler.step()
         print(json.dumps(metrics, sort_keys=True))
-        extra = {"history": history, "best_success_rate": best_success}
+        score = metrics.get("success_rate", -train_loss)
+        is_best = score > best_score
+        if is_best:
+            best_score = score
+        extra = {"history": history, "best_score": best_score}
         save_checkpoint(output_dir / "last.pt", model, optimizer, epoch, extra=extra)
-        success_rate = metrics.get("success_rate", -train_loss)
-        if success_rate > best_success:
-            best_success = success_rate
-            extra["best_success_rate"] = best_success
+        if is_best:
             save_checkpoint(output_dir / "best.pt", model, optimizer, epoch, extra=extra)
         with (output_dir / "history.json").open("w", encoding="utf-8") as handle:
             json.dump(history, handle, indent=2)

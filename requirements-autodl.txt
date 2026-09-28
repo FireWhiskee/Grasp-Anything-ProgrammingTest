@@ -1,3 +1,4 @@
 -r requirements.txt
 requests>=2.28
-transformers>=4.30,<5
+# Transformers 4.42+ may require newer torch.utils._pytree APIs than Torch 2.1.
+transformers>=4.36,<4.42

@@ -286,7 +286,6 @@ def _scene_is_validation(scene_id, validation_ratio):
 
 def build_records(instruction_archive, label_archive, selected, images_dir, args):
     records_by_scene = OrderedDict()
-    label_names = set(label_archive.namelist())
     for scene_id, members in tqdm(selected.items(), desc="read prompts and labels"):
         image_path = images_dir / (scene_id + ".jpg")
         if not image_path.exists():
@@ -295,10 +294,12 @@ def build_records(instruction_archive, label_archive, selected, images_dir, args
         for member in members:
             stem = Path(member.filename).stem
             label_name = "grasp_label_positive/{}.pt".format(stem)
-            if label_name not in label_names:
+            try:
+                label_info = label_archive.getinfo(label_name)
+            except KeyError:
                 continue
             prompt = safe_load_prompt(instruction_archive.read(member))
-            tensor = load_grasp_tensor(label_archive.read(label_name))
+            tensor = load_grasp_tensor(label_archive.read(label_info))
             grasps = tensor_to_grasps(tensor, args.min_score, args.max_grasps)
             if not grasps:
                 continue
