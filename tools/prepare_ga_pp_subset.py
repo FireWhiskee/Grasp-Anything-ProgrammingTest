@@ -23,6 +23,7 @@ import requests
 import torch
 from PIL import Image
 from tqdm import tqdm
+from pcghnet.geometry import rotated_iou
 
 
 DEFAULT_IMAGE_PARTS = (
@@ -320,15 +321,52 @@ def build_records(instruction_archive, label_archive, selected, images_dir, args
             records_by_scene[scene_id] = scene_records
 
     all_records = [record for records in records_by_scene.values() for record in records]
+
+
+    def max_grasp_overlap(first_grasps, second_grasps):
+        return max(
+            (
+                rotated_iou(first_grasp, second_grasp)
+                for first_grasp in first_grasps
+                for second_grasp in second_grasps
+            ),
+            default=0.0,
+        )
+
+
     for scene_id, records in records_by_scene.items():
-        for index, record in enumerate(records):
+        for record in records:
             if len(records) > 1:
-                record["negative_prompt"] = records[(index + 1) % len(records)]["prompt"]
+                candidates = [
+                    candidate for candidate in records if candidate is not record
+                ]
+
+                negative_record = min(
+                    candidates,
+                    key=lambda candidate: (
+                        max_grasp_overlap(
+                            record["grasps"],
+                            candidate["grasps"],
+                        ),
+                        candidate["id"],
+                    ),
+                )
+
+                record["negative_prompt"] = negative_record["prompt"]
+                record["negative_label_overlap"] = max_grasp_overlap(
+                    record["grasps"],
+                    negative_record["grasps"],
+                )
                 record["negative_type"] = "same_scene"
             else:
-                alternatives = [item for item in all_records if item["prompt"] != record["prompt"]]
+                alternatives = [
+                    item for item in all_records
+                    if item["prompt"] != record["prompt"]
+                ]
                 record["negative_prompt"] = (
-                    alternatives[0]["prompt"] if alternatives else "grasp a different object"
+                    alternatives[0]["prompt"]
+                    if alternatives
+                    else "grasp a different object"
                 )
                 record["negative_type"] = "cross_scene"
     return records_by_scene
