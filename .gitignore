@@ -11,6 +11,14 @@ checkpoints/
 *.pt
 *.pth
 *.ckpt
+
+# Submission paper and local authoring artifacts are not part of the code repository.
+paper/
+paper_figures/
+output/
+PCGH_NET_PAPER.md
+tools/build_paper_pdf.py
+
 Programming Test - Language Driven Grasp Detection(1).pdf
 autodl_pcghnet_key
 autodl_pcghnet_key.pub

@@ -1,8 +1,6 @@
-# Final experiment recipe
+# Reproduce the final experiments
 
-All three runs use the same scene-disjoint 80/10/10 split, ImageNet-pretrained
-ResNet-18, frozen MiniLM text features where applicable, seed, optimizer, and
-training schedule. Only the language-conditioning component changes.
+All runs use the same scene-disjoint split, ImageNet-pretrained ResNet-18 backbone, seed 7, optimizer, and 20-epoch schedule. Only language conditioning and the proposed consistency loss change.
 
 ## 1. Download annotations
 
@@ -16,8 +14,7 @@ unzip -t /root/autodl-tmp/grasp_anything_pp/archives/grasp_instructions.zip
 unzip -t /root/autodl-tmp/grasp_anything_pp/archives/grasp_label_positive.zip
 ```
 
-Do not download or unzip the 65 GB image archive. The preparation script reads
-only the selected JPEG byte ranges from the official split archive.
+The preparation script range-reads only selected JPEGs from the official image archive; it does not store the full 65 GB archive.
 
 ## 2. Prepare 5,000 scenes
 
@@ -31,8 +28,9 @@ python tools/prepare_ga_pp_subset.py \
   --samples-per-scene 3 \
   --validation-ratio 0.1 \
   --test-ratio 0.1
-cat /root/autodl-tmp/grasp_anything_pp/subset_5k/subset_stats.json
 ```
+
+The resulting scene-disjoint manifests contain 11,588 training, 1,413 validation, and 1,458 test samples.
 
 ## 3. Train the three ablations
 
@@ -50,16 +48,16 @@ python train_full.py $COMMON \
   --no-negative-prompts
 
 python train_full.py $COMMON \
-  --output-dir /root/autodl-tmp/pcghnet_runs/pcghnet_full
+  --output-dir /root/autodl-tmp/pcghnet_runs/pcghnet_full_v2 \
+  --consistency-weight 0.1
 ```
 
-Run these sequentially on one RTX 4090. Keep `best.pt` selected by validation
-success rate; never select a checkpoint using the test split.
+Keep `best.pt`, selected only by validation success rate.
 
-## 4. Final test metrics
+## 4. Evaluate the held-out test split
 
 ```bash
-for RUN in image_only film pcghnet_full; do
+for RUN in image_only film pcghnet_full_v2; do
   python evaluate.py \
     --checkpoint /root/autodl-tmp/pcghnet_runs/$RUN/best.pt \
     --manifest /root/autodl-tmp/grasp_anything_pp/subset_5k/test.jsonl \
@@ -68,19 +66,20 @@ for RUN in image_only film pcghnet_full; do
 done
 ```
 
-Report success rate, mean best rotated IoU, mean angle error, and target prompt
-gap. The image-only prompt gap should be exactly zero by construction.
+| Run | Success rate | Mean best IoU | Angle error | Target-prompt gap |
+|---|---:|---:|---:|---:|
+| `image_only` | 45.47% | 0.2694 | 44.73 deg | 0.0000 |
+| `film` | 55.90% | 0.3399 | 35.68 deg | 0.0366 |
+| `pcghnet_full_v2` | **57.41%** | **0.3576** | **34.62 deg** | **0.0544** |
 
-## 5. Qualitative results
+## 5. Generate qualitative results
 
 ```bash
 python visualize.py \
-  --checkpoint /root/autodl-tmp/pcghnet_runs/pcghnet_full/best.pt \
+  --checkpoint /root/autodl-tmp/pcghnet_runs/pcghnet_full_v2/best.pt \
   --manifest /root/autodl-tmp/grasp_anything_pp/subset_5k/test.jsonl \
-  --output-dir /root/autodl-tmp/pcghnet_runs/pcghnet_full/visualizations \
+  --output-dir /root/autodl-tmp/pcghnet_runs/pcghnet_full_v2/visualizations \
   --max-samples 50
 ```
 
-Red is the top prediction, green is ground truth, and the white edge indicates
-the grasp rectangle orientation. `index.json` stores each prompt and decoded
-prediction for figure selection.
+Red is the top prediction, green is ground truth, and the white edge indicates orientation. `index.json` stores prompts and decoded predictions.
