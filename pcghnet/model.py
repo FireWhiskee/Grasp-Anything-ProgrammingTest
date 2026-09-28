@@ -53,6 +53,7 @@ class PCGHNet(nn.Module):
         text_dim=256,
         fpn_dim=128,
         pretrained_backbone=False,
+        language_conditioning=True,
     ):
         super().__init__()
         self.model_config = {
@@ -61,8 +62,14 @@ class PCGHNet(nn.Module):
             "text_dim": text_dim,
             "fpn_dim": fpn_dim,
             "pretrained_backbone": pretrained_backbone,
+            "language_conditioning": language_conditioning,
         }
-        self.text_encoder = build_text_encoder(text_encoder, text_dim, text_model_name)
+        self.language_conditioning = language_conditioning
+        self.text_encoder = (
+            build_text_encoder(text_encoder, text_dim, text_model_name)
+            if language_conditioning
+            else None
+        )
 
         if ResNet18_Weights is not None:
             weights = ResNet18_Weights.DEFAULT if pretrained_backbone else None
@@ -75,7 +82,11 @@ class PCGHNet(nn.Module):
         )
         channels = [64, 128, 256, 512]
         self.lateral = nn.ModuleList([nn.Conv2d(c, fpn_dim, 1) for c in channels])
-        self.film = nn.ModuleList([TextFiLM(text_dim, fpn_dim) for _ in channels])
+        self.film = (
+            nn.ModuleList([TextFiLM(text_dim, fpn_dim) for _ in channels])
+            if language_conditioning
+            else None
+        )
         self.smooth = nn.ModuleList([ConvBlock(fpn_dim, fpn_dim) for _ in channels])
 
         self.fusion = ConvBlock(fpn_dim * 4, fpn_dim)
@@ -100,7 +111,7 @@ class PCGHNet(nn.Module):
     def predict_from_features(self, features, prompts):
         if features[0].shape[0] != len(prompts):
             raise ValueError("Batch size and number of prompts must match")
-        text_embedding = self.text_encoder(prompts)
+        text_embedding = self.text_encoder(prompts) if self.language_conditioning else None
 
         pyramid = [None] * len(features)
         top_down = None
@@ -110,7 +121,8 @@ class PCGHNet(nn.Module):
                 current = current + F.interpolate(
                     top_down, size=current.shape[-2:], mode="bilinear", align_corners=False
                 )
-            current = self.film[index](current, text_embedding)
+            if self.language_conditioning:
+                current = self.film[index](current, text_embedding)
             pyramid[index] = self.smooth[index](current)
             top_down = current
 

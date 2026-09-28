@@ -279,9 +279,14 @@ def extract_scene_images(scene_ids, output_dir, part_specs):
         remote_file.close()
 
 
-def _scene_is_validation(scene_id, validation_ratio):
+def _scene_split(scene_id, validation_ratio, test_ratio):
     value = int(hashlib.sha256(scene_id.encode("ascii")).hexdigest()[:8], 16)
-    return value / float(0xFFFFFFFF) < validation_ratio
+    fraction = value / float(0xFFFFFFFF)
+    if fraction < test_ratio:
+        return "test"
+    if fraction < test_ratio + validation_ratio:
+        return "val"
+    return "train"
 
 
 def build_records(instruction_archive, label_archive, selected, images_dir, args):
@@ -329,19 +334,24 @@ def build_records(instruction_archive, label_archive, selected, images_dir, args
     return records_by_scene
 
 
-def write_manifests(records_by_scene, output_root, validation_ratio):
-    train_path = output_root / "train.jsonl"
-    validation_path = output_root / "val.jsonl"
-    counts = {"train": 0, "val": 0, "scenes": len(records_by_scene)}
-    with train_path.open("w", encoding="utf-8") as train_handle, validation_path.open(
-        "w", encoding="utf-8"
-    ) as validation_handle:
+def write_manifests(records_by_scene, output_root, validation_ratio, test_ratio):
+    paths = {
+        split: output_root / (split + ".jsonl")
+        for split in ("train", "val", "test")
+    }
+    counts = {"train": 0, "val": 0, "test": 0, "scenes": len(records_by_scene)}
+    handles = {
+        split: path.open("w", encoding="utf-8") for split, path in paths.items()
+    }
+    try:
         for scene_id, records in records_by_scene.items():
-            split = "val" if _scene_is_validation(scene_id, validation_ratio) else "train"
-            handle = validation_handle if split == "val" else train_handle
+            split = _scene_split(scene_id, validation_ratio, test_ratio)
             for record in records:
-                handle.write(json.dumps(record, ensure_ascii=True) + "\n")
+                handles[split].write(json.dumps(record, ensure_ascii=True) + "\n")
                 counts[split] += 1
+    finally:
+        for handle in handles.values():
+            handle.close()
     with (output_root / "subset_stats.json").open("w", encoding="utf-8") as handle:
         json.dump(counts, handle, indent=2)
         handle.write("\n")
@@ -356,6 +366,7 @@ def parse_args():
     parser.add_argument("--max-scenes", type=int, default=1000)
     parser.add_argument("--samples-per-scene", type=int, default=3)
     parser.add_argument("--validation-ratio", type=float, default=0.1)
+    parser.add_argument("--test-ratio", type=float, default=0.1)
     parser.add_argument("--min-score", type=float, default=0.0)
     parser.add_argument("--max-grasps", type=int, default=50)
     parser.add_argument("--skip-images", action="store_true")
@@ -369,6 +380,10 @@ def parse_args():
 
 def main():
     args = parse_args()
+    if args.validation_ratio < 0 or args.test_ratio < 0:
+        raise ValueError("Split ratios must be non-negative")
+    if args.validation_ratio + args.test_ratio >= 1:
+        raise ValueError("Validation and test ratios must sum to less than one")
     output_root = Path(args.output_root)
     images_dir = output_root / "images"
     output_root.mkdir(parents=True, exist_ok=True)
@@ -390,7 +405,9 @@ def main():
             records = build_records(
                 instruction_archive, label_archive, selected, images_dir, args
             )
-    counts = write_manifests(records, output_root, args.validation_ratio)
+    counts = write_manifests(
+        records, output_root, args.validation_ratio, args.test_ratio
+    )
     print(json.dumps(counts, indent=2))
 
 

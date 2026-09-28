@@ -7,6 +7,7 @@ import torch
 
 from tools.prepare_ga_pp_subset import (
     SplitRemoteFile,
+    _scene_split,
     safe_load_prompt,
     tensor_to_grasps,
 )
@@ -45,6 +46,11 @@ class PrepareSubsetTest(unittest.TestCase):
         grasp = tensor_to_grasps(tensor)[0]
         self.assertEqual(grasp[:4], [10.0, 20.0, 30.0, 8.0])
         self.assertAlmostEqual(grasp[4], -math.pi / 4.0)
+
+    def test_scene_split_is_deterministic(self):
+        first = _scene_split("a" * 64, 0.1, 0.1)
+        self.assertEqual(first, _scene_split("a" * 64, 0.1, 0.1))
+        self.assertIn(first, {"train", "val", "test"})
 
 
 if __name__ == "__main__":

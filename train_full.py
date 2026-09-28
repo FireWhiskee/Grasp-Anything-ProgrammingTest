@@ -34,6 +34,7 @@ def parse_args():
     parser.add_argument("--seed", type=int, default=7)
     parser.add_argument("--max-steps", type=int, help="Limit steps per epoch for debugging")
     parser.add_argument("--text-encoder", choices=["hash", "minilm"], default="minilm")
+    parser.add_argument("--image-only", action="store_true")
     parser.add_argument("--no-negative-prompts", action="store_true")
     parser.add_argument("--no-pretrained-backbone", action="store_true")
     parser.add_argument("--no-amp", action="store_true")
@@ -85,7 +86,7 @@ def train_one_epoch(model, loader, optimizer, scaler, device, args, epoch):
             image_features = model.encode_image(images)
             outputs = model.predict_from_features(image_features, batch["prompts"])
             negative_outputs = None
-            if not args.no_negative_prompts:
+            if model.language_conditioning and not args.no_negative_prompts:
                 negative_outputs = model.predict_from_features(
                     image_features, batch["negative_prompts"]
                 )
@@ -130,6 +131,7 @@ def main():
         model = PCGHNet(
             text_encoder=args.text_encoder,
             pretrained_backbone=not args.no_pretrained_backbone,
+            language_conditioning=not args.image_only,
         ).to(args.device)
         checkpoint = {}
 

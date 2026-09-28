@@ -35,8 +35,10 @@ def evaluate_model(model, loader, device, show_progress=True):
         images = batch["images"].to(device, non_blocking=True)
         image_features = model.encode_image(images)
         outputs = model.predict_from_features(image_features, batch["prompts"])
-        negative_outputs = model.predict_from_features(
-            image_features, batch["negative_prompts"]
+        negative_outputs = (
+            model.predict_from_features(image_features, batch["negative_prompts"])
+            if model.language_conditioning
+            else outputs
         )
         predictions = decode_grasps(outputs, images.shape[-2:], top_k=1)
         targets = build_grasp_targets(
